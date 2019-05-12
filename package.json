@@ -1,0 +1,6 @@
+{
+    "dependencies": {
+        "express": "^4.16.4",
+        "serverless-http": "^1.9.0"
+    }
+}
