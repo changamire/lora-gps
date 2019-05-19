@@ -1,12 +1,40 @@
 service: lora-gps
 
+custom:
+  var:
+    loraDataTable: ${self:custom.vars.${self:provider.stage}.loraDataTable, self:custom.vars.default.loraDataTable}
+    siteName: ${self:custom.vars.${self:provider.stage}.siteName, self:custom.vars.default.siteName}
+
+  vars:
+    default:
+      loraDataTable: lora-gps-data
+      siteName: lora-gps-gpb
+
+  s3Sync:
+    - bucketName: ${self:custom.var.siteName}
+      localDir: frontend/www
+
 provider:
   name: aws
   runtime: nodejs8.10
   region: us-east-1
 
+  iamRoleStatements:
+    - Effect: 'Allow'
+      Action:
+        - 'dynamodb:*'
+      Resource: 'arn:aws:dynamodb:#{AWS::Region}:#{AWS::AccountId}:table/${self:custom.var.loraDataTable}'
+
+  environment:
+    LORA_DATA_TABLE: ${self:custom.var.loraDataTable}
+
+
   apiKeys:
     - loraGpsKey
+
+plugins:
+  - serverless-pseudo-parameters
+  - serverless-s3-sync
 
 functions:
   app:
@@ -17,3 +45,50 @@ functions:
           method: ANY
           cors: true
           private: true
+
+resources:
+  Resources:
+
+    ThingConfigTable:
+      Type: "AWS::DynamoDB::Table"
+      Properties:
+        TableName: ${self:custom.var.loraDataTable}
+        KeySchema:
+          - KeyType: "HASH"
+            AttributeName: "time"
+        AttributeDefinitions:
+          - AttributeName: "time"
+            AttributeType: "S"
+        BillingMode: PAY_PER_REQUEST
+
+    StaticSite:
+      Type: AWS::S3::Bucket
+      Properties:
+        AccessControl: PublicRead
+        BucketName: ${self:custom.var.siteName}
+        WebsiteConfiguration:
+          IndexDocument: index.html
+
+    StaticSiteS3BucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket:
+          Ref: StaticSite
+        PolicyDocument:
+          Statement:
+            - Sid: PublicReadGetObject
+              Effect: Allow
+              Principal: "*"
+              Action:
+                - s3:GetObject
+              Resource:
+                Fn::Join: [
+                  "", [
+                  "arn:aws:s3:::",
+                  {
+                    "Ref": "StaticSite"
+                  },
+                  "/*"
+                ]
+                ]
+
